@@ -1,188 +1,195 @@
 ﻿using System;
-using UnityEngine;
+using System.Globalization;
 using System.Text;
-
+using DaMichelToolbarSuperWrapper;
+using KSP.IO;
+using UnityEngine;
 
 namespace KerbalFlightIndicators
 {
+	#region Utilities
 
-#region Utilities
 #if DEBUG
-public static class DMDebug
-{
-    public static void PrintTransformHierarchy(Transform transf, int depth, StringBuilder sb)
-    {
-        PrintTransform(transf, depth, sb);
-        for (int i=0; i<transf.childCount; ++i)
-        {
-            PrintTransformHierarchy(transf.GetChild(i), depth + 1, sb);
-        }
-    }
+	public static class DMDebug
+	{
+		public static void PrintTransformHierarchy(Transform transf, int depth, StringBuilder sb)
+		{
+			PrintTransform(transf, depth, sb);
+			for (var i = 0; i < transf.childCount; ++i) {
+				PrintTransformHierarchy(transf.GetChild(i), depth + 1, sb);
+			}
+		}
 
-    public static void PrintTransform(Transform transf, int depth, StringBuilder sb)
-    {
-        String vfmt = "F3";
-        sb.AppendLine(new String(' ', depth) + transf);
-        sb.AppendLine("P = " + transf.localPosition.ToString(vfmt));
-        sb.AppendLine("R = " + transf.localEulerAngles.ToString(vfmt));
-        sb.AppendLine("S = " + transf.localScale.ToString(vfmt));
-        sb.AppendLine("MW = \n" + transf.localToWorldMatrix.ToString(vfmt));
-        if (transf.parent != null)
-        {
-            Matrix4x4 ml = transf.parent.localToWorldMatrix.inverse * transf.localToWorldMatrix;
-            sb.AppendLine("ML = \n" + ml.ToString(vfmt));
-        }
-    }
+		public static void PrintTransform(Transform transf, int depth, StringBuilder sb)
+		{
+			var vfmt = "F3";
+			sb.AppendLine(new string(' ', depth) + transf);
+			sb.AppendLine("P = " + transf.localPosition.ToString(vfmt));
+			sb.AppendLine("R = " + transf.localEulerAngles.ToString(vfmt));
+			sb.AppendLine("S = " + transf.localScale.ToString(vfmt));
+			sb.AppendLine("MW = \n" + transf.localToWorldMatrix.ToString(vfmt));
+			if (transf.parent != null) {
+				var ml = transf.parent.localToWorldMatrix.inverse * transf.localToWorldMatrix;
+				sb.AppendLine("ML = \n" + ml.ToString(vfmt));
+			}
+		}
 
-    public static void PrintTransformHierarchyUp(Transform transf, int depth, StringBuilder sb)
-    {
-        PrintTransform(transf, depth, sb);
-        if (transf.parent)
-            PrintTransformHierarchyUp(transf.parent, depth+1, sb);
-    }
+		public static void PrintTransformHierarchyUp(Transform transf, int depth, StringBuilder sb)
+		{
+			PrintTransform(transf, depth, sb);
+			if (transf.parent) {
+				PrintTransformHierarchyUp(transf.parent, depth + 1, sb);
+			}
+		}
 
-    // from http://stackoverflow.com/questions/1838963/easy-and-fast-way-to-convert-an-int-to-binary
-    public static string ToBin(int value, int len) {
-       return (len > 1 ? ToBin(value >> 1, len - 1) : null) + "01"[value & 1];
-    }
+		// from http://stackoverflow.com/questions/1838963/easy-and-fast-way-to-convert-an-int-to-binary
+		public static string ToBin(int value, int len)
+		{
+			return (len > 1 ? ToBin(value >> 1, len - 1) : null) + "01"[value & 1];
+		}
 
-    public static String DebugRepr(Quaternion q)
-    {
-        Vector3 x = q * Util.x; // apply rotation to vectors
-        Vector3 y = q * Util.y;
-        Vector3 z = q * Util.z;
-        return String.Format("[{0}, {1}, {2}]", x.ToString("F3"), y.ToString("F3"), z.ToString("F3"));
-    }
-}
+		public static string DebugRepr(Quaternion q)
+		{
+			var x = q * Util.x; // apply rotation to vectors
+			var y = q * Util.y;
+			var z = q * Util.z;
+			return string.Format("[{0}, {1}, {2}]", x.ToString("F3"), y.ToString("F3"), z.ToString("F3"));
+		}
+	}
 #endif
 
 
-public static class GUIExt
-{
-    public static void DrawTextureCentered(Vector3 position, Texture2D tex, float width, float height)
-    {
-        GUI.DrawTexture(new Rect(position.x - width * 0.5f,
-                                 position.y - height * 0.5f,
-                                 width, height),
-                                 tex);
-    }
+	public static class GUIExt
+	{
+		public static void DrawTextureCentered(Vector3 position, Texture2D tex, float width, float height)
+		{
+			GUI.DrawTexture(new Rect(position.x - width * 0.5f,
+					position.y - height * 0.5f,
+					width, height),
+				tex);
+		}
 
-    public static void DrawTextureCentered(Vector3 position, Texture2D tex)
-    {
-        DrawTextureCentered(position, tex, tex.width, tex.height);
-    }
+		public static void DrawTextureCentered(Vector3 position, Texture2D tex)
+		{
+			DrawTextureCentered(position, tex, tex.width, tex.height);
+		}
 
-    public static void DrawTextureCentered(Vector3 position, Texture2D tex, float width, float height, Rect texCoords)
-    {
-        GUI.DrawTextureWithTexCoords(new Rect(position.x - width * 0.5f,
-                                              position.y - height * 0.5f,
-                                              width, height),
-                                     tex, texCoords);
-    }
-}
-
-
-
-public static class Util
-{
-    public static Vector3 x = Vector3.right;
-    public static Vector3 y = Vector3.up;
-    public static Vector3 z = Vector3.forward;
-
-    public static float RAD2DEGf = 180f/Mathf.PI;
-    public static double RAD2DEG = 180.0/Math.PI;
-
-    // angle need to rotate the x-axis so that it is parallel with (x,y); in Radians
-    public static float PolarAngle(Vector2 v)
-    {
-        float n = v.magnitude;
-        float a = Mathf.Acos(v.x/n);
-        if (v.y < 0f) a = Mathf.PI*2f - a;
-        return a;
-    }
-
-    public static Vector3 PerspectiveProjection(Camera cam, Vector3 p)
-    {
-        return cam.projectionMatrix.MultiplyPoint(p);
-    }
-
-    public static Vector3 CameraToViewport(Camera cam, Vector3 v)
-    {
-        Vector3 q = cam.projectionMatrix.MultiplyPoint(v);
-        // After projection, coordinates go from -1 to 1.
-        // We need to transform to proper viewport space which goes from 0 to 1.
-        // The bottom left is viewport-(0,0), according to the Unity 3d reference.
-        // For some odd reason the x axis in camera space seems reversed. 
-        q.y = (q.y + 1.0f) * 0.5f;
-        q.x = (1.0f - q.x) * 0.5f;
-        return q;
-    }
-
-    public static Vector3 CameraToScreen(Camera cam, Vector3 v)
-    {
-        return cam.ViewportToScreenPoint(CameraToViewport(cam, v));
-    }
-
-    public static Texture2D LoadTexture(String filename)
-    {
-        Byte[] data = KSP.IO.File.ReadAllBytes<KerbalFlightIndicators>(filename);
-        // we can just create a new texture object with a blank 2x2 image. 
-        Texture2D tex = new Texture2D(2, 2);
-        tex.LoadImage(data); // Resizes the texture to hold the image data. Sets width and height attribute according to the loaded image.
-        tex.anisoLevel = 0;
-        tex.filterMode = FilterMode.Bilinear;
-        return tex;
-    }
-
-    public static Color ColorFromString(String s)
-    {
-        Color result = new Color();
-        var strvalues = s.Split(',');
-        for (int i = 0; i < strvalues.Length; ++i)
-            result[i] = float.Parse(strvalues[i].Trim(), System.Globalization.CultureInfo.InvariantCulture);
-        return result;
-    }
-
-    public static String ColorToString(Color c)
-    {
-        String[] s = new String[4];
-        for (int i = 0; i < 4; ++i) 
-            s[i] = c[i].ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return String.Join(",", s);
-    }
+		public static void DrawTextureCentered(Vector3 position, Texture2D tex, float width, float height, Rect texCoords)
+		{
+			GUI.DrawTextureWithTexCoords(new Rect(position.x - width * 0.5f,
+					position.y - height * 0.5f,
+					width, height),
+				tex, texCoords);
+		}
+	}
 
 
-    public static Rect[] ComputeTexCoords(int tex_width, int tex_height, RectOffset[] atlas)
-    {
-        Rect[] result = new Rect[atlas.Length];
-        float sx = 1f/tex_width;
-        float sy = 1f/tex_height;
-        for (int i=0; i<atlas.Length; ++i)
-        {
-            result[i] = new Rect(
-                atlas[i].left * sx,
-                1f - (atlas[i].bottom  * sy),
-                (atlas[i].right-atlas[i].left) * sx,
-                (atlas[i].bottom-atlas[i].top) * sy
-            );
-        }
-        return result;
-    }
+	public static class Util
+	{
+		public static Vector3 x = Vector3.right;
+		public static Vector3 y = Vector3.up;
+		public static Vector3 z = Vector3.forward;
 
-    public static RectOffset RectOffsetFromString(String s)
-    {
-        int left, right, bottom, top;
-        var strvalues = s.Split(',');
-        left = int.Parse(strvalues[0]);
-        right = int.Parse(strvalues[1]);
-        top = int.Parse(strvalues[2]);
-        bottom = int.Parse(strvalues[3]);
-        return new RectOffset(left, right, top, bottom);
-    }
-}
-#endregion
+		public static float RAD2DEGf = 180f / Mathf.PI;
+		public static double RAD2DEG = 180.0 / Math.PI;
 
-#region comments
+		// angle need to rotate the x-axis so that it is parallel with (x,y); in Radians
+		public static float PolarAngle(Vector2 v)
+		{
+			var n = v.magnitude;
+			var a = Mathf.Acos(v.x / n);
+			if (v.y < 0f) a = Mathf.PI * 2f - a;
+			return a;
+		}
+
+		public static Vector3 PerspectiveProjection(Camera cam, Vector3 p)
+		{
+			return cam.projectionMatrix.MultiplyPoint(p);
+		}
+
+		public static Vector3 CameraToViewport(Camera cam, Vector3 v)
+		{
+			var q = cam.projectionMatrix.MultiplyPoint(v);
+			// After projection, coordinates go from -1 to 1.
+			// We need to transform to proper viewport space which goes from 0 to 1.
+			// The bottom left is viewport-(0,0), according to the Unity 3d reference.
+			// For some odd reason the x axis in camera space seems reversed. 
+			q.y = (q.y + 1.0f) * 0.5f;
+			q.x = (1.0f - q.x) * 0.5f;
+			return q;
+		}
+
+		public static Vector3 CameraToScreen(Camera cam, Vector3 v)
+		{
+			return cam.ViewportToScreenPoint(CameraToViewport(cam, v));
+		}
+
+		public static Texture2D LoadTexture(string filename)
+		{
+			var data = File.ReadAllBytes<KerbalFlightIndicators>(filename);
+			// we can just create a new texture object with a blank 2x2 image. 
+			var tex = new Texture2D(2, 2);
+			tex.LoadImage(data); // Resizes the texture to hold the image data. Sets width and height attribute according to the loaded image.
+			tex.anisoLevel = 0;
+			tex.filterMode = FilterMode.Bilinear;
+			return tex;
+		}
+
+		public static Color ColorFromString(string s)
+		{
+			var result = new Color();
+			var strvalues = s.Split(',');
+			for (var i = 0; i < strvalues.Length; ++i) {
+				result[i] = float.Parse(strvalues[i].Trim(), CultureInfo.InvariantCulture);
+			}
+
+			return result;
+		}
+
+		public static string ColorToString(Color c)
+		{
+			var s = new string[4];
+			for (var i = 0; i < 4; ++i) {
+				s[i] = c[i].ToString(CultureInfo.InvariantCulture);
+			}
+
+			return string.Join(",", s);
+		}
+
+
+		public static Rect[] ComputeTexCoords(int tex_width, int tex_height, RectOffset[] atlas)
+		{
+			var result = new Rect[atlas.Length];
+			var sx = 1f / tex_width;
+			var sy = 1f / tex_height;
+			for (var i = 0; i < atlas.Length; ++i) {
+				result[i] = new Rect(
+					atlas[i].left * sx,
+					1f - atlas[i].bottom * sy,
+					(atlas[i].right - atlas[i].left) * sx,
+					(atlas[i].bottom - atlas[i].top) * sy
+				);
+			}
+
+			return result;
+		}
+
+		public static RectOffset RectOffsetFromString(string s)
+		{
+			int left, right, bottom, top;
+			var strvalues = s.Split(',');
+			left = int.Parse(strvalues[0]);
+			right = int.Parse(strvalues[1]);
+			top = int.Parse(strvalues[2]);
+			bottom = int.Parse(strvalues[3]);
+			return new RectOffset(left, right, top, bottom);
+		}
+	}
+
+	#endregion
+
+	#region comments
+
 /*
 These are KSPs layers
  mask 0 = Default
@@ -1200,607 +1207,604 @@ UI camera                               , cullmask = 000000000000000000010000000
 UI mask camera                          , cullmask = 00000000000000000
  
  created by:
-        StringBuilder sb = new StringBuilder();
-        sb.AppendFormat("AllLayers = {0}, {1}\n", DMDebug.ToBin(Physics.AllLayers, 32), Physics.AllLayers.ToString());
-        sb.AppendFormat("DefaultRaycastLayers = {0}, {1}\n", DMDebug.ToBin(Physics.DefaultRaycastLayers, 32), Physics.DefaultRaycastLayers.ToString());
-        sb.AppendFormat("IgnoreRaycastLayer = {0}, {1}\n", DMDebug.ToBin(Physics.IgnoreRaycastLayer, 32), Physics.IgnoreRaycastLayer.ToString());
-        sb.AppendFormat("Collision Matrix: \n");
-        for (int i=0; i<=30; ++i)
-            for (int j=0; j<=30; ++j)
-            {
-                string namei = LayerMask.LayerToName(i);
-                string namej = LayerMask.LayerToName(j);
-                sb.AppendFormat("   {0}({1}) - {2}({3}): {4}\n", i.ToString(), namei, j.ToString(), namej, (!Physics.GetIgnoreLayerCollision(i, j)).ToString());
-            }
-        sb.Append("Cameras:\n");
-        foreach (var cam in Camera.allCameras)
-        {
-            sb.AppendFormat("{0}, cullmask = {1} = {2}\n", cam.name,DMDebug.ToBin(cam.cullingMask, 32), cam.cullingMask.ToString());
-        }
-        Debug.Log(sb.ToString());
+		StringBuilder sb = new StringBuilder();
+		sb.AppendFormat("AllLayers = {0}, {1}\n", DMDebug.ToBin(Physics.AllLayers, 32), Physics.AllLayers.ToString());
+		sb.AppendFormat("DefaultRaycastLayers = {0}, {1}\n", DMDebug.ToBin(Physics.DefaultRaycastLayers, 32), Physics.DefaultRaycastLayers.ToString());
+		sb.AppendFormat("IgnoreRaycastLayer = {0}, {1}\n", DMDebug.ToBin(Physics.IgnoreRaycastLayer, 32), Physics.IgnoreRaycastLayer.ToString());
+		sb.AppendFormat("Collision Matrix: \n");
+		for (int i=0; i<=30; ++i)
+			for (int j=0; j<=30; ++j)
+			{
+				string namei = LayerMask.LayerToName(i);
+				string namej = LayerMask.LayerToName(j);
+				sb.AppendFormat("   {0}({1}) - {2}({3}): {4}\n", i.ToString(), namei, j.ToString(), namej, (!Physics.GetIgnoreLayerCollision(i, j)).ToString());
+			}
+		sb.Append("Cameras:\n");
+		foreach (var cam in Camera.allCameras)
+		{
+			sb.AppendFormat("{0}, cullmask = {1} = {2}\n", cam.name,DMDebug.ToBin(cam.cullingMask, 32), cam.cullingMask.ToString());
+		}
+		Debug.Log(sb.ToString());
  
 something else. Not needed any more.
-    Quaternion BuildUpFrame(FlightCamera cam, Vector3 up)
-    {
-        Vector3 z;
-        if (Mathf.Abs(Vector3.Dot(up, cam.transform.right)) < 0.9999)
-        {
-            z = Vector3.Cross(cam.transform.right, up); // z is in the cameras y-z plane
-            z.Normalize();
-        }
-        else // up_in_cam_frame is parallel to x
-        {
-            z = cam.transform.forward;
-        }
-        return Quaternion.LookRotation(z, up);
-    }
+	Quaternion BuildUpFrame(FlightCamera cam, Vector3 up)
+	{
+		Vector3 z;
+		if (Mathf.Abs(Vector3.Dot(up, cam.transform.right)) < 0.9999)
+		{
+			z = Vector3.Cross(cam.transform.right, up); // z is in the cameras y-z plane
+			z.Normalize();
+		}
+		else // up_in_cam_frame is parallel to x
+		{
+			z = cam.transform.forward;
+		}
+		return Quaternion.LookRotation(z, up);
+	}
 */
-#endregion
 
-#region Marker Implementation
-public enum Markers
-{
-    Heading = 0,
-    Prograde,
-    Retrograde,
-    Reverse,
-    LevelGuide,
-    Vertical,
-    Horizon,
-    COUNT
-};
+	#endregion
 
+	#region Marker Implementation
 
-public class MarkerScript : MonoBehaviour
-{
-    public  Color baseColor;
-    private float blendC0; // fully visible
-    private float blendC1; // invisible
-    private float blendCM;
-    private bool  doBlending = false;
-    private Renderer renderer = null;
-    public  float blendValue;
-    
-    public void SetBlendConstants(float blendC0_, float blendC1_)
-    {
-        blendC0    = blendC0_;
-        blendC1    = blendC1_;
-        blendCM    = 1.0f/(blendC1 - blendC0);
-        blendValue = blendC1;
-        doBlending = true;
-    }
-
-    public void Start()
-    {
-        renderer = GetComponent<Renderer>();
-        renderer.material.color = baseColor;
-    }
-
-    public void OnWillRenderObject()
-    {
-        if (doBlending)
-        {
-            float alpha = 1.0f - Mathf.Clamp01((blendValue-blendC0)*blendCM);
-            Color c = baseColor;
-            c.a *= alpha;
-            renderer.material.color = c;
-        }
-    }
-};
+	public enum Markers
+	{
+		Heading = 0,
+		Prograde,
+		Retrograde,
+		Reverse,
+		LevelGuide,
+		Vertical,
+		Horizon,
+		COUNT
+	}
 
 
-public class CameraScript : MonoBehaviour
-{
-    const  float speed_draw_threshold = 1.0e-1f;
-    /* cached information about the vessel and the world.
-     * Most of teh calculations are done in the draw pass
-     * because i want to make sure the camera is up to date */
-    Quaternion qvessel     = Quaternion.identity;
-    Vector3 ship_up        = Util.z;
-    Vector3 speed          = Vector3.zero;
-    Vector3 east           = Vector3.zero;
-    Vector3 north          = Vector3.zero;
-    Camera cam                           = null; // through which the player sees the world
-    Camera my_indicator_cam              = null; // that is used to render our indicator objects.
-    Vector3 last_speed      = Vector3.zero;  // for filtering
-    Quaternion last_qvessel = Quaternion.identity; // for filtering
+	public class MarkerScript : MonoBehaviour
+	{
+		public Color baseColor;
+		private float blendC0; // fully visible
+		private float blendC1; // invisible
+		private float blendCM;
+		public float blendValue;
+		private bool doBlending;
+		private Renderer renderer;
 
-    public bool[] markerEnabling = null;
-    public MarkerScript[] markerScripts = null;
+		public void SetBlendConstants(float blendC0_, float blendC1_)
+		{
+			blendC0 = blendC0_;
+			blendC1 = blendC1_;
+			blendCM = 1.0f / (blendC1 - blendC0);
+			blendValue = blendC1;
+			doBlending = true;
+		}
+
+		public void Start()
+		{
+			renderer = GetComponent<Renderer>();
+			renderer.material.color = baseColor;
+		}
+
+		public void OnWillRenderObject()
+		{
+			if (doBlending) {
+				var alpha = 1.0f - Mathf.Clamp01((blendValue - blendC0) * blendCM);
+				var c = baseColor;
+				c.a *= alpha;
+				renderer.material.color = c;
+			}
+		}
+	}
 
 
-    public void Start()
-    {
-        my_indicator_cam = GetComponent<Camera>();
-    }
+	public class CameraScript : MonoBehaviour
+	{
+		private const float speed_draw_threshold = 1.0e-1f;
+		private Camera cam; // through which the player sees the world
+		private Vector3 east = Vector3.zero;
+		private Quaternion last_qvessel = Quaternion.identity; // for filtering
+		private Vector3 last_speed = Vector3.zero; // for filtering
 
-    void OnPreCull()  // this is only called if the MonoBehaviour component is attached to a GameObject which also has a Camera!
-    {   
+		public bool[] markerEnabling;
+		public MarkerScript[] markerScripts;
+		private Camera my_indicator_cam; // that is used to render our indicator objects.
 
+		private Vector3 north = Vector3.zero;
+
+		/* cached information about the vessel and the world.
+		 * Most of teh calculations are done in the draw pass
+		 * because i want to make sure the camera is up to date */
+		private Quaternion qvessel = Quaternion.identity;
+		private Vector3 ship_up = Util.z;
+		private Vector3 speed = Vector3.zero;
+
+
+		public void Start()
+		{
+			my_indicator_cam = GetComponent<Camera>();
+		}
+
+		private void OnPreCull() // this is only called if the MonoBehaviour component is attached to a GameObject which also has a Camera!
+		{
 #if false
-        if (Input.GetKeyDown(KeyCode.O))
-        {
-            var g = FlightGlobals.fetch;
-            StringBuilder sb = new StringBuilder(8);
-            sb.AppendLine("ship_upAxis             = "+((Vector3)FlightGlobals.ship_upAxis).ToString("F3"));
-            sb.AppendLine("upAxis                  = "+((Vector3)FlightGlobals.upAxis).ToString("F3"));
-            sb.AppendLine("getUpAxis                  = "+((Vector3)FlightGlobals.getUpAxis()).ToString("F3"));
-            sb.AppendLine("ship_srfVelocity        = "+((Vector3)FlightGlobals.ship_srfVelocity).ToString("F3"));
-            sb.AppendLine("GetSpeedVector()        = "+GetSpeedVector().ToString("F3"));
-            sb.AppendLine("ship_rotation           = "+DMDebug.DebugRepr(FlightGlobals.ship_rotation));
-            sb.AppendLine("ship_orientation        = "+DMDebug.DebugRepr(FlightGlobals.ship_orientation));
-            sb.AppendLine("ship_orientation_offset = "+DMDebug.DebugRepr(FlightGlobals.ship_orientation_offset));
-            Debug.Log(sb.ToString());
-        }
+		if (Input.GetKeyDown(KeyCode.O))
+		{
+			var g = FlightGlobals.fetch;
+			StringBuilder sb = new StringBuilder(8);
+			sb.AppendLine("ship_upAxis             = "+((Vector3)FlightGlobals.ship_upAxis).ToString("F3"));
+			sb.AppendLine("upAxis                  = "+((Vector3)FlightGlobals.upAxis).ToString("F3"));
+			sb.AppendLine("getUpAxis                  = "+((Vector3)FlightGlobals.getUpAxis()).ToString("F3"));
+			sb.AppendLine("ship_srfVelocity        = "+((Vector3)FlightGlobals.ship_srfVelocity).ToString("F3"));
+			sb.AppendLine("GetSpeedVector()        = "+GetSpeedVector().ToString("F3"));
+			sb.AppendLine("ship_rotation           = "+DMDebug.DebugRepr(FlightGlobals.ship_rotation));
+			sb.AppendLine("ship_orientation        = "+DMDebug.DebugRepr(FlightGlobals.ship_orientation));
+			sb.AppendLine("ship_orientation_offset = "+DMDebug.DebugRepr(FlightGlobals.ship_orientation_offset));
+			Debug.Log(sb.ToString());
+		}
 #endif
 
 #if false
-        if (Input.GetKeyDown(KeyCode.O))
-        {
-            StringBuilder sb = new StringBuilder(8);
-            sb.AppendLine("DMHUD:");
-            sb.AppendLine("       up_in_cam_frame = " + up_in_cam_frame.ToString("F3"));
-            sb.AppendLine("       speed_in_cam_frame = " + speed_in_cam_frame.ToString("F3"));
-            sb.AppendLine("       heading_in_cam_frame = " + heading_in_cam_frame.ToString("F3"));
-            sb.AppendLine("       qvessel = " + (qhorizoninv*qvessel).ToString("F3"));
-            sb.AppendLine("       qhorizon = " + qhorizon.ToString("F3"));
-            sb.AppendLine("       euler    = " + vessel_euler.ToString("F3"));
-            sb.AppendLine("       heading  = " + (qhorizoninv * heading).ToString("F2"));
-            sb.AppendLine("       horizon_roll_z = " + (qcaminv * qhorizon * Util.z).ToString("F2"));
-            Debug.Log(sb.ToString());
-        }
+		if (Input.GetKeyDown(KeyCode.O))
+		{
+			StringBuilder sb = new StringBuilder(8);
+			sb.AppendLine("DMHUD:");
+			sb.AppendLine("       up_in_cam_frame = " + up_in_cam_frame.ToString("F3"));
+			sb.AppendLine("       speed_in_cam_frame = " + speed_in_cam_frame.ToString("F3"));
+			sb.AppendLine("       heading_in_cam_frame = " + heading_in_cam_frame.ToString("F3"));
+			sb.AppendLine("       qvessel = " + (qhorizoninv*qvessel).ToString("F3"));
+			sb.AppendLine("       qhorizon = " + qhorizon.ToString("F3"));
+			sb.AppendLine("       euler    = " + vessel_euler.ToString("F3"));
+			sb.AppendLine("       heading  = " + (qhorizoninv * heading).ToString("F2"));
+			sb.AppendLine("       horizon_roll_z = " + (qcaminv * qhorizon * Util.z).ToString("F2"));
+			Debug.Log(sb.ToString());
+		}
 #endif
 
-        for (int i=0; i<(int)Markers.COUNT; ++i)
-            markerEnabling[i] = false;
+			for (var i = 0; i < (int) Markers.COUNT; ++i) {
+				markerEnabling[i] = false;
+			}
 
-        if (CheckAndPrepare()) 
-        {
-            UpdateAllMarkers();
-        }
+			if (CheckAndPrepare()) {
+				UpdateAllMarkers();
+			}
 
-        for (int i=0; i<(int)Markers.COUNT; ++i)
-        {
-            markerScripts[i].gameObject.SetActive(markerEnabling[i]);
-        }
-    }
-
-
-    bool CheckAndPrepare()
-    {
-        if (!FlightGlobals.ready) return false;
-
-        Vessel vessel = FlightGlobals.ActiveVessel;
-        if (vessel == null) return false;
-
-        if (vessel.state == Vessel.State.DEAD)
-            return false;
-
-        cam = FlightGlobals.fetch.mainCameraRef;
-        if (cam == null) return false;
-        
-        if (!IsInAdmissibleCameraMode())
-            return false;
-
-        // simple running average filtering
-        Vector3 current_speed = GetSpeedVector();
-        Quaternion current_qvessel  = FlightGlobals.ship_rotation;
-        speed = 0.5f*(current_speed + last_speed);
-        qvessel = Quaternion.Lerp(current_qvessel, last_qvessel, 0.5f);
-        last_speed   = current_speed;
-        last_qvessel = current_qvessel;
-
-        ship_up  = FlightGlobals.ship_upAxis;
-        east = vessel.east;
-        north = vessel.north;
-        return true;
-    }
+			for (var i = 0; i < (int) Markers.COUNT; ++i) {
+				markerScripts[i].gameObject.SetActive(markerEnabling[i]);
+			}
+		}
 
 
-    void UpdateMarker(Markers id, Vector3 position, Vector3 up_vector, float blend_value)
-    {
-        // alpha = 0 is transparent
-        // position is in camera space
-        MarkerScript ms = markerScripts[(int)id];
-        position.x *= -my_indicator_cam.aspect * my_indicator_cam.orthographicSize;
-        position.y *= -my_indicator_cam.orthographicSize;
-        position.z = ms.transform.localPosition.z;
-        ms.transform.localPosition = position; 
-        ms.blendValue = blend_value;
-        float nrm = Mathf.Sqrt(up_vector.x * up_vector.x + up_vector.y * up_vector.y);
-        float cs =  up_vector.y / nrm;
-        float sn = -up_vector.x / nrm;
-        Quaternion q; 
-        q.x = q.y = 0;
-        if (cs < 0.9999999999)
-        {
-            q.z = Mathf.Sqrt((1 - cs)*0.5f);
-            q.w = sn / q.z * 0.5f;
-        }
-        else // identity
-        {   
-            q.z = 0.0f;
-            q.w = 1.0f;
-        }
-        ms.transform.localRotation = q;
-        markerEnabling[(int)id] = true;
-    }
+		private bool CheckAndPrepare()
+		{
+			if (!FlightGlobals.ready) return false;
+
+			var vessel = FlightGlobals.ActiveVessel;
+			if (vessel == null) return false;
+
+			if (vessel.state == Vessel.State.DEAD) {
+				return false;
+			}
+
+			cam = FlightGlobals.fetch.mainCameraRef;
+			if (cam == null) return false;
+
+			if (!IsInAdmissibleCameraMode()) {
+				return false;
+			}
+
+			// simple running average filtering
+			var current_speed = GetSpeedVector();
+			var current_qvessel = FlightGlobals.ship_rotation;
+			speed = 0.5f * (current_speed + last_speed);
+			qvessel = Quaternion.Lerp(current_qvessel, last_qvessel, 0.5f);
+			last_speed = current_speed;
+			last_qvessel = current_qvessel;
+
+			ship_up = FlightGlobals.ship_upAxis;
+			east = vessel.east;
+			north = vessel.north;
+			return true;
+		}
 
 
-    void UpdateAllMarkers()
-    {
-        Vector3 normalized_speed = speed.normalized;
-        bool is_moving = speed.sqrMagnitude > speed_draw_threshold*speed_draw_threshold;
+		private void UpdateMarker(Markers id, Vector3 position, Vector3 up_vector, float blend_value)
+		{
+			// alpha = 0 is transparent
+			// position is in camera space
+			var ms = markerScripts[(int) id];
+			position.x *= -my_indicator_cam.aspect * my_indicator_cam.orthographicSize;
+			position.y *= -my_indicator_cam.orthographicSize;
+			position.z = ms.transform.localPosition.z;
+			ms.transform.localPosition = position;
+			ms.blendValue = blend_value;
+			var nrm = Mathf.Sqrt(up_vector.x * up_vector.x + up_vector.y * up_vector.y);
+			var cs = up_vector.y / nrm;
+			var sn = -up_vector.x / nrm;
+			Quaternion q;
+			q.x = q.y = 0;
+			if (cs < 0.9999999999) {
+				q.z = Mathf.Sqrt((1 - cs) * 0.5f);
+				q.w = sn / q.z * 0.5f;
+			} else // identity
+			{
+				q.z = 0.0f;
+				q.w = 1.0f;
+			}
 
-        Quaternion qcam     = cam.transform.rotation;
-        Quaternion qcaminv = Quaternion.Inverse(qcam);
-        Quaternion vessel_to_cam  = qcaminv * qvessel;
-
-        Vector3 cf_vertical             = qcaminv * ship_up;
-        Vector3 cf_up                   = - (vessel_to_cam * Util.z);
-        Vector3 cf_heading              = vessel_to_cam * Util.y;
-        Vector3 cf_velocity_direction   = qcaminv * normalized_speed;
-        Vector3 cf_hproj = cf_heading - Vector3.Project(cf_heading, cf_vertical); // the projection of the heading onto the trangent plane of upAxis
-        Vector3 cf_north = qcaminv * north;
-
-        float heading_dot_up = Vector3.Dot(cf_vertical, cf_heading);
-        float speed_dot_up   = Vector3.Dot(cf_vertical, cf_velocity_direction);
-         
-        Vector3 tmp = Vector3.Cross(cf_vertical, cf_heading);
-        Vector3 cf_horizon_up_vector = Vector3.Cross(cf_heading, tmp);
-
-        float blend_vertical = Mathf.Max(Mathf.Abs(heading_dot_up), is_moving ? Mathf.Abs(speed_dot_up) : 0f);
-        float blend_horizon = Mathf.Min(Mathf.Abs(heading_dot_up), is_moving ? Mathf.Abs(speed_dot_up) : 0f);
-        float blend_level_guide = Mathf.Abs(heading_dot_up);
-
-        {
-            Vector3 screen_position = Util.PerspectiveProjection(cam, cf_hproj);
-            if (CheckPosition(cam, screen_position)) // possible optimization: i think this check can be made before screen space projection
-            {
-                UpdateMarker(Markers.Horizon, screen_position, cf_vertical, blend_horizon);
-            }
-        }
-
-        {
-            Vector3 screen_position = Util.PerspectiveProjection(cam, cf_vertical);
-            if (CheckPosition(cam, screen_position))
-            {
-                UpdateMarker(Markers.Vertical, screen_position, cf_north, blend_vertical);
-            }
-        }
-
-        if (is_moving)
-        {
-            Vector3 screen_pos = Util.PerspectiveProjection(cam, cf_velocity_direction);
-            if (CheckPosition(cam, screen_pos))
-            {
-                if (cf_velocity_direction.z >= 0)
-                    UpdateMarker(Markers.Prograde, screen_pos, Util.y, 1.0f);
-                else
-                    UpdateMarker(Markers.Retrograde, screen_pos, Util.y, 1.0f);
-            }
-        }       
-
-        {
-            Vector3 screen_pos = Util.PerspectiveProjection(cam, cf_heading);
-            if (CheckPosition(cam, screen_pos))
-            {
-                if (cf_heading.z >= 0)
-                    UpdateMarker(Markers.Heading, screen_pos, cf_up, 1.0f);
-                else
-                    UpdateMarker(Markers.Reverse, screen_pos, cf_up, 1.0f);
-                UpdateMarker(Markers.LevelGuide, screen_pos, cf_horizon_up_vector,  blend_level_guide);
-            }
-        }
-    }
-
-    /*  from Steam Gauges */
-    public static Vector3 GetSpeedVector()
-    {
-        Vessel vessel = FlightGlobals.ActiveVessel; // must not be null. Check before calling.
-        // Target velocity correction
-        ITargetable tar = FlightGlobals.fetch.VesselTarget;
-        Vector3 tgt_velocity = FlightGlobals.ship_tgtVelocity;
-        if (tar != null && tar.GetVessel() != null)
-        {
-            // Otherwise it seems to be equal to orbital velocity when the target
-            // vessel isn't loaded (i.e. more than 2km away), which makes no sense.
-            // I consider this as a bug in the stock nav-ball functionality.
-            Vessel target_vessel = tar.GetVessel();
-            if (target_vessel.LandedOrSplashed)
-            {
-                tgt_velocity = vessel.GetSrfVelocity();
-                if (target_vessel.loaded)
-                    tgt_velocity -= tar.GetSrfVelocity();
-            }
-        }
-        Vector3 speed = Vector3.zero;
-        switch (FlightGlobals.speedDisplayMode)
-        {
-            case FlightGlobals.SpeedDisplayModes.Orbit:
-                speed = vessel.obt_velocity;
-                break;
-
-            case FlightGlobals.SpeedDisplayModes.Target:
-                speed = tgt_velocity;
-                break;
-
-            default:
-                speed = vessel.GetSrfVelocity();
-                break;
-        }
-        return speed;
-    }
-    /* end of Steam Gauges code */
-
-    bool CheckPosition(Camera cam, Vector3 q)
-    {
-        if (float.IsInfinity(q.x) || float.IsNaN(q.x) || q.x < -1.5f || q.x > 1.5f) return false;
-        if (float.IsInfinity(q.y) || float.IsNaN(q.y) || q.y < -1.5f || q.y > 1.5f) return false;
-        return true;
-    }
-
-    bool IsInAdmissibleCameraMode()
-    {
-        switch (CameraManager.Instance.currentCameraMode)
-        {
-            case CameraManager.CameraMode.Flight:
-            case CameraManager.CameraMode.Internal:
-            case CameraManager.CameraMode.IVA: 
-                return true;
-        }
-        return false;
-    }
-}
-#endregion
+			ms.transform.localRotation = q;
+			markerEnabling[(int) id] = true;
+		}
 
 
+		private void UpdateAllMarkers()
+		{
+			var normalized_speed = speed.normalized;
+			var is_moving = speed.sqrMagnitude > speed_draw_threshold * speed_draw_threshold;
 
-[KSPAddon(KSPAddon.Startup.Flight, false)]
-public class KerbalFlightIndicators : DaMichelToolbarSuperWrapper.PluginWithToolbarSupport
-{
-    const int KFI_LAYER = 30;  // I claim this layer just for me!
-    Texture2D marker_atlas = null;
-    RectOffset[] atlas_px = {
-        new RectOffset(  0*2,  32*2, 32*2, 64*2), // heading
-        new RectOffset( 32*2,  64*2, 32*2, 64*2), // prograde
-        new RectOffset( 64*2,  96*2, 32*2, 64*2), // retrograde
-        new RectOffset( 96*2, 128*2, 32*2, 64*2), // reverse heading
-        new RectOffset(128*2, 192*2, 32*2, 64*2), // wings level guide
-        new RectOffset((208-2)*2, (256-2)*2, (16-2)*2, (64-2)*2), // vertical
-        new RectOffset(0*2, 256*2, 6*2, 10*2), // horizon
-    };
-    Rect[] atlas_uv = null;
-    float displayScaleFactor = 1.0f;
-    String atlasTexture = "atlas.png";
+			var qcam = cam.transform.rotation;
+			var qcaminv = Quaternion.Inverse(qcam);
+			var vessel_to_cam = qcaminv * qvessel;
 
-    Color horizonColor     = Color.green;
-    Color progradeColor    = Color.green;
-    Color attitudeColor    = Color.green;
-    bool  drawInFrontOfCockpit = true;
+			var cf_vertical = qcaminv * ship_up;
+			var cf_up = -(vessel_to_cam * Util.z);
+			var cf_heading = vessel_to_cam * Util.y;
+			var cf_velocity_direction = qcaminv * normalized_speed;
+			var cf_hproj = cf_heading - Vector3.Project(cf_heading, cf_vertical); // the projection of the heading onto the trangent plane of upAxis
+			var cf_north = qcaminv * north;
 
-    MarkerScript[] markerScripts = null;
-    CameraScript cameraScript  = null;
-    GameObject markerParentObject = null;
-    bool[] markerEnabling = null;
+			var heading_dot_up = Vector3.Dot(cf_vertical, cf_heading);
+			var speed_dot_up = Vector3.Dot(cf_vertical, cf_velocity_direction);
 
-    protected override DaMichelToolbarSuperWrapper.ToolbarInfo GetToolbarInfo()
-    {
-        return new DaMichelToolbarSuperWrapper.ToolbarInfo {
-            name = "KerbalFlightIndicators",
-            tooltip = "KerbalFlightIndicators On/Off Switch",
-            toolbarTexture = "KerbalFlightIndicators/toolbarbutton",
-            launcherTexture = "KerbalFlightIndicators/icon",
-            visibleInScenes = new GameScenes[] { GameScenes.FLIGHT }
-        };
-    }
+			var tmp = Vector3.Cross(cf_vertical, cf_heading);
+			var cf_horizon_up_vector = Vector3.Cross(cf_heading, tmp);
 
-    // see http://docs.unity3d.com/ScriptReference/MonoBehaviour.Awake.html
-    // Called when the script instance is being loaded.
-    void Awake()
-    {   
-        LoadSettings();
-        InitializeToolbars();
-    }
+			var blend_vertical = Mathf.Max(Mathf.Abs(heading_dot_up), is_moving ? Mathf.Abs(speed_dot_up) : 0f);
+			var blend_horizon = Mathf.Min(Mathf.Abs(heading_dot_up), is_moving ? Mathf.Abs(speed_dot_up) : 0f);
+			var blend_level_guide = Mathf.Abs(heading_dot_up);
 
+			{
+				var screen_position = Util.PerspectiveProjection(cam, cf_hproj);
+				if (CheckPosition(cam, screen_position)) // possible optimization: i think this check can be made before screen space projection
+				{
+					UpdateMarker(Markers.Horizon, screen_position, cf_vertical, blend_horizon);
+				}
+			}
 
-    // see http://docs.unity3d.com/ScriptReference/MonoBehaviour.Start.html
-    // Maybe called once, on the first frame where the script is enabled. If the script is never enabled, Start won't be called.
-    void Start()
-    {
-        marker_atlas = Util.LoadTexture(atlasTexture);
-        atlas_uv = Util.ComputeTexCoords(marker_atlas.width, marker_atlas.height, atlas_px);
-        AdjustPhysics();
-        CreateGameObjects();
-    }
+			{
+				var screen_position = Util.PerspectiveProjection(cam, cf_vertical);
+				if (CheckPosition(cam, screen_position)) {
+					UpdateMarker(Markers.Vertical, screen_position, cf_north, blend_vertical);
+				}
+			}
 
+			if (is_moving) {
+				var screen_pos = Util.PerspectiveProjection(cam, cf_velocity_direction);
+				if (CheckPosition(cam, screen_pos)) {
+					if (cf_velocity_direction.z >= 0) {
+						UpdateMarker(Markers.Prograde, screen_pos, Util.y, 1.0f);
+					} else {
+						UpdateMarker(Markers.Retrograde, screen_pos, Util.y, 1.0f);
+					}
+				}
+			}
 
-    public void OnDestroy()
-    {
-        SaveSettings();
-        // well we probably need this to not create a memory leak or so ...
-        DestroyGameObjects();
-        TearDownToolbars();
-    }
+			{
+				var screen_pos = Util.PerspectiveProjection(cam, cf_heading);
+				if (CheckPosition(cam, screen_pos)) {
+					if (cf_heading.z >= 0) {
+						UpdateMarker(Markers.Heading, screen_pos, cf_up, 1.0f);
+					} else {
+						UpdateMarker(Markers.Reverse, screen_pos, cf_up, 1.0f);
+					}
 
-    public void SaveSettings()
-    {
-        ConfigNode settings = new ConfigNode();
-        settings.name = "SETTINGS";
-        SaveMutableToolbarSettings(settings);
-        settings.Save(AssemblyLoader.loadedAssemblies.GetPathByType(typeof(KerbalFlightIndicators)) + "/state.cfg");
-    }
+					UpdateMarker(Markers.LevelGuide, screen_pos, cf_horizon_up_vector, blend_level_guide);
+				}
+			}
+		}
 
+		/*  from Steam Gauges */
+		public static Vector3 GetSpeedVector()
+		{
+			var vessel = FlightGlobals.ActiveVessel; // must not be null. Check before calling.
+			// Target velocity correction
+			var tar = FlightGlobals.fetch.VesselTarget;
+			Vector3 tgt_velocity = FlightGlobals.ship_tgtVelocity;
+			if (tar != null && tar.GetVessel() != null) {
+				// Otherwise it seems to be equal to orbital velocity when the target
+				// vessel isn't loaded (i.e. more than 2km away), which makes no sense.
+				// I consider this as a bug in the stock nav-ball functionality.
+				var target_vessel = tar.GetVessel();
+				if (target_vessel.LandedOrSplashed) {
+					tgt_velocity = vessel.GetSrfVelocity();
+					if (target_vessel.loaded) {
+						tgt_velocity -= tar.GetSrfVelocity();
+					}
+				}
+			}
 
-    public void LoadSettings()
-    {
-        ConfigNode settings = new ConfigNode();
-        // load mutable configuration
-        settings = ConfigNode.Load(AssemblyLoader.loadedAssemblies.GetPathByType(typeof(KerbalFlightIndicators)) + "/state.cfg");
-        if (settings != null)
-        {
-            LoadMutableToolbarSettings(settings);
-        }
+			var speed = Vector3.zero;
+			switch (FlightGlobals.speedDisplayMode) {
+				case FlightGlobals.SpeedDisplayModes.Orbit:
+					speed = vessel.obt_velocity;
+					break;
 
-        // load configuration that won't be changed in game
-        settings = ConfigNode.Load(AssemblyLoader.loadedAssemblies.GetPathByType(typeof(KerbalFlightIndicators)) + "/settings.cfg");
-        if (settings != null)
-        {
-            string[] markerNames =
-            {
-                "Heading",
-                "Prograde",
-                "Retrograde",
-                "Reverse",
-                "LevelGuide",
-                "Vertical",
-                "Horizon"
-            };
-            for (int i=0; i<(int)Markers.COUNT; ++i)
-            {
-                if (settings.HasValue("rect"+markerNames[i])) 
-                {
-                    atlas_px[i] = Util.RectOffsetFromString(settings.GetValue("rect"+markerNames[i]));
-                }
-            }
-            LoadImmutableToolbarSettings(settings);
-            settings.TryGetValue("displayScaleFactor", ref displayScaleFactor);
-            settings.TryGetValue("atlasTexture", ref atlasTexture);
-            if (settings.HasValue("horizonColor")) horizonColor = Util.ColorFromString(settings.GetValue("horizonColor"));
-            if (settings.HasValue("progradeColor")) progradeColor = Util.ColorFromString(settings.GetValue("progradeColor"));
-            if (settings.HasValue("attitudeColor")) attitudeColor = Util.ColorFromString(settings.GetValue("attitudeColor"));
-            if (settings.HasValue("drawInFrontOfCockpit")) drawInFrontOfCockpit = bool.Parse(settings.GetValue("drawInFrontOfCockpit"));
-        }
-    }
+				case FlightGlobals.SpeedDisplayModes.Target:
+					speed = tgt_velocity;
+					break;
 
+				default:
+					speed = vessel.GetSrfVelocity();
+					break;
+			}
 
-    protected override  void OnGuiVisibilityChange()
-    {
-        bool enabled_ = isGuiVisible;
-        enabled = enabled_;
-        if (cameraScript) cameraScript.gameObject.SetActive(enabled_);
-        if (markerParentObject) markerParentObject.SetActive(enabled_);
-    }
+			return speed;
+		}
+		/* end of Steam Gauges code */
 
+		private bool CheckPosition(Camera cam, Vector3 q)
+		{
+			if (float.IsInfinity(q.x) || float.IsNaN(q.x) || q.x < -1.5f || q.x > 1.5f) return false;
+			if (float.IsInfinity(q.y) || float.IsNaN(q.y) || q.y < -1.5f || q.y > 1.5f) return false;
+			return true;
+		}
 
-    private void AdjustPhysics()
-    {
-        // DON'T WANT OUR GUI ELEMENTS COLLIDING WITH STUFF!
-        for (int i=0; i<30; ++i)
-            Physics.IgnoreLayerCollision(KFI_LAYER, i, true); // ignore = true
-        // Colliders are removed, too.
-        // Is there anything else???
-    }
+		private bool IsInAdmissibleCameraMode()
+		{
+			switch (CameraManager.Instance.currentCameraMode) {
+				case CameraManager.CameraMode.Flight:
+				case CameraManager.CameraMode.Internal:
+				case CameraManager.CameraMode.IVA:
+					return true;
+			}
+
+			return false;
+		}
+	}
+
+	#endregion
 
 
-    private void CreateGameObjects()
-    {
-        const float BLEND_HORIZON_C0 = 0.259f;
-        const float BLEND_HORIZON_C1 = 0.342f;
-        const float BLEND_VERT_C0 = 0.966f;
-        const float BLEND_VERT_C1 = 0.94f;
-        const float BLEND_LEVEL_GUIDE_C0 = 0.984f;
-        const float BLEND_LEVEL_GUIDE_C1 = 0.996f;
+	[KSPAddon(KSPAddon.Startup.Flight, false)]
+	public class KerbalFlightIndicators : PluginWithToolbarSupport
+	{
+		private const int KFI_LAYER = 30; // I claim this layer just for me!
 
-        float viewportSizeX = Screen.width*0.5f;
-        float viewportSizeY = Screen.height*0.5f;
+		private readonly RectOffset[] atlas_px =
+		{
+			new RectOffset(0 * 2, 32 * 2, 32 * 2, 64 * 2), // heading
+			new RectOffset(32 * 2, 64 * 2, 32 * 2, 64 * 2), // prograde
+			new RectOffset(64 * 2, 96 * 2, 32 * 2, 64 * 2), // retrograde
+			new RectOffset(96 * 2, 128 * 2, 32 * 2, 64 * 2), // reverse heading
+			new RectOffset(128 * 2, 192 * 2, 32 * 2, 64 * 2), // wings level guide
+			new RectOffset((208 - 2) * 2, (256 - 2) * 2, (16 - 2) * 2, (64 - 2) * 2), // vertical
+			new RectOffset(0 * 2, 256 * 2, 6 * 2, 10 * 2) // horizon
+		};
 
-        {
-            GameObject o = new GameObject("KerbalFlightIndicators-CustomCamera");
-            Camera cam = o.AddComponent<Camera>();
-            cam.orthographic = true;
-            cam.clearFlags = CameraClearFlags.Nothing;
-            cam.orthographicSize = viewportSizeY;
-            cam.aspect           = viewportSizeX/viewportSizeY;
-            cam.cullingMask  = (1<<KFI_LAYER);
-            cam.depth = drawInFrontOfCockpit ? 10 : 1;
-            cam.farClipPlane = 2.0f;
-            cam.nearClipPlane = 0.5f;
-            o.transform.localPosition = new Vector3(0.5f, 0.5f, 0.0f);
-            o.transform.localRotation = Quaternion.identity;
-            CameraScript cs = cameraScript = o.AddComponent<CameraScript>();
-        }
+		private Rect[] atlas_uv;
+		private string atlasTexture = "atlas.png";
+		private Color attitudeColor = Color.green;
+		private CameraScript cameraScript;
+		private float displayScaleFactor = 1.0f;
+		private bool drawInFrontOfCockpit = true;
 
-        {
-        Shader shd = Shader.Find("KSP/Alpha/Unlit Transparent");
+		private Color horizonColor = Color.green;
+		private Texture2D marker_atlas;
+		private bool[] markerEnabling;
+		private GameObject markerParentObject;
 
-        GameObject o = markerParentObject = new GameObject("KerbalFlightIndicators-MarkerParent");
+		private MarkerScript[] markerScripts;
+		private Color progradeColor = Color.green;
 
-        markerEnabling = cameraScript.markerEnabling = new bool[(int)Markers.COUNT];
-        markerScripts = cameraScript.markerScripts = new MarkerScript[(int)Markers.COUNT];
-        for (int i=0; i<(int)Markers.COUNT; ++i)
-        {
-            Material mat = new Material(shd);
-            mat.mainTexture = marker_atlas;
-            Rect uv = atlas_uv[i];
-            RectOffset px = atlas_px[i];
-            mat.mainTextureScale = new Vector2(uv.width, uv.height);
-            mat.mainTextureOffset = new Vector2(uv.xMin, uv.yMin);
+		protected override ToolbarInfo GetToolbarInfo()
+		{
+			return new ToolbarInfo
+			{
+				name = "KerbalFlightIndicators",
+				tooltip = "KerbalFlightIndicators On/Off Switch",
+				toolbarTexture = "KerbalFlightIndicators/toolbarbutton",
+				launcherTexture = "KerbalFlightIndicators/icon",
+				visibleInScenes = new[] {GameScenes.FLIGHT}
+			};
+		}
 
-            o = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            o.name = "KerbalFlightIndicators-"+Enum.GetName(typeof(Markers), i);
-
-            Component[] colliders = o.GetComponents<Collider>();
-            foreach (var c in colliders)
-            {
-                Component.DestroyImmediate(c); // DON'T WANT OUR GUI ELEMENTS COLLIDING WITH STUFF!
-            }
-
-            MeshRenderer mr = o.GetComponent<MeshRenderer>();
-            mr.material = mat;
-            o.layer = KFI_LAYER;
-
-            float zlevel = 1.0f;
-            MarkerScript ms = markerScripts[i] = o.AddComponent<MarkerScript>();
-            if (i == (int)Markers.Heading || i == (int)Markers.LevelGuide || i == (int)Markers.Reverse)
-            {
-                ms.baseColor = attitudeColor;
-            }
-            else if (i == (int)Markers.Prograde || i == (int)Markers.Retrograde)
-            {
-                ms.baseColor = progradeColor;
-                zlevel = 1.1f;
-            }
-            else
-            {
-                ms.baseColor = horizonColor;
-                zlevel = 1.2f;
-            }
-            if (i == (int)Markers.Horizon)
-            {
-                ms.SetBlendConstants(BLEND_HORIZON_C0, BLEND_HORIZON_C1);
-            }
-            else if (i == (int)Markers.Vertical)
-            {
-                ms.SetBlendConstants(BLEND_VERT_C0, BLEND_VERT_C1);
-            }
-            else if (i == (int)Markers.LevelGuide)
-            {
-                ms.SetBlendConstants(BLEND_LEVEL_GUIDE_C0, BLEND_LEVEL_GUIDE_C1);
-            }
-
-            o.transform.parent = markerParentObject.transform;
-            o.transform.localPosition = new Vector3(0.0f, 0.0f, zlevel);
-            o.transform.localRotation = Quaternion.identity;
-            o.transform.localScale    = new Vector3((px.right - px.left)*displayScaleFactor, (px.bottom - px.top)*displayScaleFactor, 1.0f);
-
-            markerEnabling[i] = true;
-        }
-        }
-        OnGuiVisibilityChange();
-    }
+		// see http://docs.unity3d.com/ScriptReference/MonoBehaviour.Awake.html
+		// Called when the script instance is being loaded.
+		private void Awake()
+		{
+			LoadSettings();
+			InitializeToolbars();
+		}
 
 
-    void DestroyGameObjects()
-    {
-        if (cameraScript != null && cameraScript.gameObject != null) // could it be that they are deleted somewhere outside this plugin? I suppose because i got a NRE here ...
-            GameObject.Destroy(cameraScript.gameObject); 
-        if (markerParentObject != null)
-            GameObject.Destroy(markerParentObject); // destroys children, too
-        cameraScript = null;
-        markerScripts = null;
-        markerParentObject = null;
-    }
-}
+		// see http://docs.unity3d.com/ScriptReference/MonoBehaviour.Start.html
+		// Maybe called once, on the first frame where the script is enabled. If the script is never enabled, Start won't be called.
+		private void Start()
+		{
+			marker_atlas = Util.LoadTexture(atlasTexture);
+			atlas_uv = Util.ComputeTexCoords(marker_atlas.width, marker_atlas.height, atlas_px);
+			AdjustPhysics();
+			CreateGameObjects();
+		}
 
+
+		public void OnDestroy()
+		{
+			SaveSettings();
+			// well we probably need this to not create a memory leak or so ...
+			DestroyGameObjects();
+			TearDownToolbars();
+		}
+
+		public void SaveSettings()
+		{
+			var settings = new ConfigNode();
+			settings.name = "SETTINGS";
+			SaveMutableToolbarSettings(settings);
+			settings.Save(AssemblyLoader.loadedAssemblies.GetPathByType(typeof(KerbalFlightIndicators)) + "/state.cfg");
+		}
+
+
+		public void LoadSettings()
+		{
+			var settings = new ConfigNode();
+			// load mutable configuration
+			settings = ConfigNode.Load(AssemblyLoader.loadedAssemblies.GetPathByType(typeof(KerbalFlightIndicators)) + "/state.cfg");
+			if (settings != null) {
+				LoadMutableToolbarSettings(settings);
+			}
+
+			// load configuration that won't be changed in game
+			settings = ConfigNode.Load(AssemblyLoader.loadedAssemblies.GetPathByType(typeof(KerbalFlightIndicators)) + "/settings.cfg");
+			if (settings != null) {
+				string[] markerNames =
+				{
+					"Heading",
+					"Prograde",
+					"Retrograde",
+					"Reverse",
+					"LevelGuide",
+					"Vertical",
+					"Horizon"
+				};
+				for (var i = 0; i < (int) Markers.COUNT; ++i) {
+					if (settings.HasValue("rect" + markerNames[i])) {
+						atlas_px[i] = Util.RectOffsetFromString(settings.GetValue("rect" + markerNames[i]));
+					}
+				}
+
+				LoadImmutableToolbarSettings(settings);
+				settings.TryGetValue("displayScaleFactor", ref displayScaleFactor);
+				settings.TryGetValue("atlasTexture", ref atlasTexture);
+				if (settings.HasValue("horizonColor")) horizonColor = Util.ColorFromString(settings.GetValue("horizonColor"));
+				if (settings.HasValue("progradeColor")) progradeColor = Util.ColorFromString(settings.GetValue("progradeColor"));
+				if (settings.HasValue("attitudeColor")) attitudeColor = Util.ColorFromString(settings.GetValue("attitudeColor"));
+				if (settings.HasValue("drawInFrontOfCockpit")) drawInFrontOfCockpit = bool.Parse(settings.GetValue("drawInFrontOfCockpit"));
+			}
+		}
+
+
+		protected override void OnGuiVisibilityChange()
+		{
+			var enabled_ = isGuiVisible;
+			enabled = enabled_;
+			if (cameraScript) cameraScript.gameObject.SetActive(enabled_);
+			if (markerParentObject) markerParentObject.SetActive(enabled_);
+		}
+
+
+		private void AdjustPhysics()
+		{
+			// DON'T WANT OUR GUI ELEMENTS COLLIDING WITH STUFF!
+			for (var i = 0; i < 30; ++i) {
+				Physics.IgnoreLayerCollision(KFI_LAYER, i, true); // ignore = true
+			}
+
+			// Colliders are removed, too.
+			// Is there anything else???
+		}
+
+
+		private void CreateGameObjects()
+		{
+			const float BLEND_HORIZON_C0 = 0.259f;
+			const float BLEND_HORIZON_C1 = 0.342f;
+			const float BLEND_VERT_C0 = 0.966f;
+			const float BLEND_VERT_C1 = 0.94f;
+			const float BLEND_LEVEL_GUIDE_C0 = 0.984f;
+			const float BLEND_LEVEL_GUIDE_C1 = 0.996f;
+
+			var viewportSizeX = Screen.width * 0.5f;
+			var viewportSizeY = Screen.height * 0.5f;
+
+			{
+				var o = new GameObject("KerbalFlightIndicators-CustomCamera");
+				var cam = o.AddComponent<Camera>();
+				cam.orthographic = true;
+				cam.clearFlags = CameraClearFlags.Nothing;
+				cam.orthographicSize = viewportSizeY;
+				cam.aspect = viewportSizeX / viewportSizeY;
+				cam.cullingMask = 1 << KFI_LAYER;
+				cam.depth = drawInFrontOfCockpit ? 10 : 1;
+				cam.farClipPlane = 2.0f;
+				cam.nearClipPlane = 0.5f;
+				o.transform.localPosition = new Vector3(0.5f, 0.5f, 0.0f);
+				o.transform.localRotation = Quaternion.identity;
+				var cs = cameraScript = o.AddComponent<CameraScript>();
+			}
+
+			{
+				var shd = Shader.Find("KSP/Alpha/Unlit Transparent");
+
+				var o = markerParentObject = new GameObject("KerbalFlightIndicators-MarkerParent");
+
+				markerEnabling = cameraScript.markerEnabling = new bool[(int) Markers.COUNT];
+				markerScripts = cameraScript.markerScripts = new MarkerScript[(int) Markers.COUNT];
+				for (var i = 0; i < (int) Markers.COUNT; ++i) {
+					var mat = new Material(shd);
+					mat.mainTexture = marker_atlas;
+					var uv = atlas_uv[i];
+					var px = atlas_px[i];
+					mat.mainTextureScale = new Vector2(uv.width, uv.height);
+					mat.mainTextureOffset = new Vector2(uv.xMin, uv.yMin);
+
+					o = GameObject.CreatePrimitive(PrimitiveType.Quad);
+					o.name = "KerbalFlightIndicators-" + Enum.GetName(typeof(Markers), i);
+
+					Component[] colliders = o.GetComponents<Collider>();
+					foreach (var c in colliders) {
+						DestroyImmediate(c); // DON'T WANT OUR GUI ELEMENTS COLLIDING WITH STUFF!
+					}
+
+					var mr = o.GetComponent<MeshRenderer>();
+					mr.material = mat;
+					o.layer = KFI_LAYER;
+
+					var zlevel = 1.0f;
+					var ms = markerScripts[i] = o.AddComponent<MarkerScript>();
+					if (i == (int) Markers.Heading || i == (int) Markers.LevelGuide || i == (int) Markers.Reverse) {
+						ms.baseColor = attitudeColor;
+					} else if (i == (int) Markers.Prograde || i == (int) Markers.Retrograde) {
+						ms.baseColor = progradeColor;
+						zlevel = 1.1f;
+					} else {
+						ms.baseColor = horizonColor;
+						zlevel = 1.2f;
+					}
+
+					if (i == (int) Markers.Horizon) {
+						ms.SetBlendConstants(BLEND_HORIZON_C0, BLEND_HORIZON_C1);
+					} else if (i == (int) Markers.Vertical) {
+						ms.SetBlendConstants(BLEND_VERT_C0, BLEND_VERT_C1);
+					} else if (i == (int) Markers.LevelGuide) {
+						ms.SetBlendConstants(BLEND_LEVEL_GUIDE_C0, BLEND_LEVEL_GUIDE_C1);
+					}
+
+					o.transform.parent = markerParentObject.transform;
+					o.transform.localPosition = new Vector3(0.0f, 0.0f, zlevel);
+					o.transform.localRotation = Quaternion.identity;
+					o.transform.localScale = new Vector3((px.right - px.left) * displayScaleFactor, (px.bottom - px.top) * displayScaleFactor, 1.0f);
+
+					markerEnabling[i] = true;
+				}
+			}
+			OnGuiVisibilityChange();
+		}
+
+
+		private void DestroyGameObjects()
+		{
+			if (cameraScript != null && cameraScript.gameObject != null) // could it be that they are deleted somewhere outside this plugin? I suppose because i got a NRE here ...
+			{
+				Destroy(cameraScript.gameObject);
+			}
+
+			if (markerParentObject != null) {
+				Destroy(markerParentObject); // destroys children, too
+			}
+
+			cameraScript = null;
+			markerScripts = null;
+			markerParentObject = null;
+		}
+	}
 }
